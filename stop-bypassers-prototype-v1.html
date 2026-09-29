@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stop Bypassers - Admin Flow</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" />
+  <style>
+:root {
+  --brand-primary: #E7FF33;
+  --obsidian: #222222;
+  --grey-90: #383838;
+  --grey-70: #646464;
+  --grey-60: #7a7a7a;
+  --grey-40: #a7a7a7;
+  --grey-30: #bdbdbd;
+  --grey-20: #d3d3d3;
+  --grey-12: #e4e4e4;
+  --grey-9: #ebebeb;
+  --grey-6: #f2f2f2;
+  --grey-3: #f8f8f8;
+  --white: #ffffff;
+  --container-primary: #fbfbfb;
+  --error-primary: #ca483d;
+  --success-primary: #38ba5f;
+  --success-light: #d7f1df;
+  --warning-primary: #f8c821;
+  --warning-light: #fef4d3;
+  --info-primary: #608fff;
+  --info-light: #eff4ff;
+  --navy: #1C4774;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --shadow-modal: 0 8px 32px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.06);
+  --font-ui: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font-ui); font-size: 14px; color: var(--obsidian); background: var(--container-primary); -webkit-font-smoothing: antialiased; }
+
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 20px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  direction: ltr;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+/* scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--grey-20); border-radius: 3px; }
+  </style>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" data-presets="react">
+const { Fragment, useState, useEffect, useRef } = React;
+
+/* ── Icon helper ── */
+const MSO = ({
+  icon, size = 20, fill = 0, wght = 400, style, className,
+}) => (
+  <span
+    className={`material-symbols-outlined${className ? ` ${className}` : ''}`}
+    style={{ fontSize: size, width: size, height: size, fontVariationSettings: `'FILL' ${fill},'wght' ${wght},'GRAD' 0,'opsz' ${size}`, ...style }}
+  >{icon}</span>
+)
+
+/* ── Base students (5 rows) ── */
+const BASE_STUDENTS = [
+  { id: 1, name: 'Natasha Abe Higa', email: 'natasha.higa@teachable.com', optOut: false, lastLogin: '7 minutes ago', joined: 'a year ago', purchases: '$2.01', initials: 'P', avatarGreen: true },
+  { id: 2, name: 'Natasha Higa', email: 'natasha.higa@gmail.com', optOut: true, lastLogin: 'a month ago', joined: '2 months ago', purchases: '$0.00' },
+  { id: 3, name: 'rodrigo', email: 'ropago@gmail.com', optOut: false, lastLogin: '—', joined: '9 months ago', purchases: '$0.00' },
+]
+/* After upload: new (over-limit) rows first so "first 5 lines" = pending review */
+const NEW_STUDENTS = BASE_STUDENTS.map(s => ({ ...s, id: s.id + 100 }))
+const UPLOADED_STUDENTS = [...NEW_STUDENTS, ...BASE_STUDENTS]
+const PENDING_IDS = new Set(NEW_STUDENTS.map(s => s.id))
+
+const STEP_SUBTITLES = [
+  'Review and agree to the upload terms before proceeding.',
+  'Set up Teachable Payments to enable payouts from student transactions.',
+  'Choose how to handle the additional students beyond your plan limit.',
+]
+const NEXT_LABELS = ['Agree & Continue', 'Save & Continue', 'Confirm & Add Students']
+
+
+function App() {
+  /* page state */
+  const [uploaded, setUploaded] = useState(false)
+  const [confirmed, setConfirmed] = useState(false)
+  const students = (uploaded || confirmed) ? UPLOADED_STUDENTS : BASE_STUDENTS
+  const SEAT_LIMIT = confirmed ? 10 : 5
+  const overLimit = (uploaded && !confirmed) ? students.length - SEAT_LIMIT : 0
+
+  /* upload modal */
+  const [uploadOpen, setUploadOpen] = useState(false)
+  const [uploadTab, setUploadTab] = useState('manually')
+  const [studentRows, setStudentRows] = useState([{ id: 1, name: '', email: '', password: '' }])
+  const [enroll, setEnroll] = useState(false)
+  const [consent, setConsent] = useState(false)
+  const [payMethod, setPayMethod] = useState('')
+  const [payCountry, setPayCountry] = useState('')
+  const COUNTRY_ELIGIBILITY = {
+    'Argentina':'Removed','Armenia':'Removed','Australia':'Available','Austria':'Available',
+    'Belgium':'Available','Bolivia':'Removed','Bosnia & Herzegovina':'Removed','Bulgaria':'Available',
+    'Cambodia':'Removed','Canada':'Available','Chile':'Removed','Colombia':'Removed',
+    'Costa Rica':'Removed',"Côte d'Ivoire":'Removed','Croatia':'Available','Cyprus':'Available',
+    'Czech Republic':'Available','Denmark':'Available','Dominican Republic':'Removed','Egypt':'Removed',
+    'El Salvador':'Removed','Estonia':'Available','Finland':'Available','France':'Available',
+    'Gambia':'Removed','Germany':'Available','Gibraltar':'Available','Greece':'Available',
+    'Hong Kong':'Available','Hungary':'Available','Iceland':'Removed','India':'Removed',
+    'Indonesia':'Removed','Ireland':'Available','Israel':'Removed','Italy':'Available',
+    'Japan':'Available','Jordan':'Removed','Kenya':'Removed','Latvia':'Available',
+    'Liechtenstein':'Available','Lithuania':'Available','Luxembourg':'Available',
+    'Macao SAR China':'Removed','Malaysia':'Removed','Malta':'Available','Mauritius':'Removed',
+    'Mexico':'Available','Morocco':'Removed','Namibia':'Removed','Netherlands':'Available',
+    'New Zealand':'Available','Norway':'Available','Panama':'Removed','Paraguay':'Removed',
+    'Peru':'Removed','Philippines':'Removed','Poland':'Available','Portugal':'Available',
+    'Qatar':'Removed','Romania':'Available','Saudi Arabia':'Removed','Senegal':'Removed',
+    'Serbia':'Removed','Singapore':'Available','Slovakia':'Available','Slovenia':'Available',
+    'South Africa':'Removed','South Korea':'Removed','Spain':'Available','Sweden':'Available',
+    'Switzerland':'Available','Thailand':'Removed','Trinidad & Tobago':'Removed','Tunisia':'Removed',
+    'Turkey':'Removed','United Arab Emirates':'Available','United Kingdom':'Available',
+    'United States':'Available','Uruguay':'Removed','Vietnam':'Removed',
+  }
+  const [csvDrag, setCsvDrag] = useState(false)
+  const [csvFile, setCsvFile] = useState(null)
+
+  /* simulate near-limit state */
+  const [nearLimit, setNearLimit] = useState(false)
+
+  /* drawer */
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [enabledSteps, setEnabledSteps] = useState({ terms: true, payments: true, seats: true })
+  const [drawerError, setDrawerError] = useState(false)
+
+  function toggleDrawerStep(key) {
+    const next = { ...enabledSteps, [key]: !enabledSteps[key] }
+    if (!next.terms && !next.payments && !next.seats) { setDrawerError(true); return }
+    setDrawerError(false)
+    setEnabledSteps(next)
+    // Keep the modal on the same step key after the active steps list changes
+    const currentKey = activeSteps[step - 1]?.key
+    if (currentKey) {
+      const nextActiveSteps = STEP_META.filter(s => next[s.key])
+      const newIdx = nextActiveSteps.findIndex(s => s.key === currentKey)
+      setStep(newIdx >= 0 ? newIdx + 1 : 1)
+    }
+  }
+
+  /* dynamic step list derived from enabled checkboxes */
+  const STEP_META = [
+    { key: 'terms',    label: 'Terms & Conditions'  },
+    { key: 'payments', label: 'Teachable Payments'  },
+    { key: 'seats',    label: 'Seat Options'         },
+  ]
+  const activeSteps = STEP_META.filter(s => enabledSteps[s.key])
+  const totalSteps  = activeSteps.length
+
+  /* 3-step setup modal */
+  const [setupOpen, setSetupOpen] = useState(false)
+  const [seatOnlyModal, setSeatOnlyModal] = useState(false)
+  const [step, setStep] = useState(1)
+  const [termsPrivacy, setTermsPrivacy] = useState(false)
+  const [billing, setBilling] = useState('annually')
+  const [step3Mode, setStep3Mode] = useState('upgrade')
+
+  const currentStepKey = seatOnlyModal ? 'seats' : activeSteps[step - 1]?.key
+  const allTerms = termsPrivacy
+  const nextDisabled = (currentStepKey === 'terms' && !allTerms) || (currentStepKey === 'payments' && !payCountry)
+
+  /* tooltip for warning icon */
+  const [tooltipId, setTooltipId] = useState(null)
+
+  /* misc */
+  const [selected, setSelected] = useState(new Set([1]))
+  const [toast, setToast] = useState(null)
+  const uploadOverlayRef = useRef(null)
+  const setupOverlayRef = useRef(null)
+
+  /* ── Upload modal ── */
+  function openUpload() {
+    setUploadOpen(true)
+    setUploadTab('manually')
+    setStudentRows([{ id: 1, name: '', email: '', password: '' }])
+    setEnroll(false); setConsent(false); setPayMethod(''); setCsvFile(null)
+  }
+  function closeUpload() { setUploadOpen(false) }
+
+  function addRow() { setStudentRows(r => [...r, { id: Date.now(), name: '', email: '', password: '' }]) }
+  function updateRow(id, field, val) {
+    setStudentRows(r => r.map(row => row.id === id ? { ...row, [field]: val } : row))
+  }
+  function removeRow(id) { setStudentRows(r => r.filter(row => row.id !== id)) }
+
+  function handleImport() {
+    closeUpload()
+    setUploaded(true)
+    setToast('Upload successful!')
+  }
+
+  /* ── 3-step modal ── */
+  function openSetup() {
+    setSetupOpen(true)
+    setStep(1)
+    setTermsPrivacy(false); setPayCountry('')
+    setBilling('annually'); setStep3Mode('upgrade')
+  }
+  function closeSetup() { setSetupOpen(false); setSeatOnlyModal(false) }
+
+  function handleNext() {
+    if (step < totalSteps) { setStep(step + 1) }
+    else { closeSetup(); setConfirmed(true); setUploaded(false); setToast('Students added successfully!') }
+  }
+  function handleBack() { if (step > 1) setStep(step - 1) }
+
+  function dotClass(i) {
+    if (i < step) return 'step-dot-complete'
+    if (i === step) return 'step-dot-active'
+    return 'step-dot-inactive'
+  }
+  function labelClass(i) {
+    if (i < step) return 'step-label-complete'
+    if (i === step) return 'step-label-active'
+    return 'step-label-inactive'
+  }
+
+  /* CTA label per step key */
+  const ctaLabel = {
+    terms: 'Agree & Continue',
+    payments: 'Continue to Stripe onboarding',
+    seats: 'Confirm & Add Students',
+  }
+
+  /* ── Table ── */
+  const allSelected = selected.size === students.length
+  function toggleAll(checked) { setSelected(checked ? new Set(students.map(s => s.id)) : new Set()) }
+  function toggleOne(id) {
+    const n = new Set(selected); if (n.has(id)) n.delete(id); else n.add(id); setSelected(n)
+  }
+
+  /* ── Keyboard / toast ── */
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape') { if (setupOpen) closeSetup(); else if (uploadOpen) closeUpload() }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [uploadOpen, setupOpen])
+
+  useEffect(() => {
+    if (toast) { const t = setTimeout(() => setToast(null), 3200); return () => clearTimeout(t) }
+  }, [toast])
+
+  const displayCount = nearLimit && !uploaded && !confirmed ? 4 : students.length
+  const counterLabel = `${displayCount}/${SEAT_LIMIT} Students`
+  const fillPct = nearLimit && !uploaded && !confirmed ? 80 : Math.min((students.length / SEAT_LIMIT) * 100, 100)
+
+  return (
+    <>
+      <style>{`
+        /* ── App shell ── */
+        .app { display:flex; min-height:100vh; }
+        .nav { width:236px; flex-shrink:0; background:var(--obsidian); position:sticky; top:0; height:100vh; display:flex; flex-direction:column; z-index:2; }
+        .nav-school { padding:20px 24px; border-bottom:1px solid var(--grey-90); }
+        .nav-school-name { color:var(--white); font-size:18px; font-weight:600; line-height:1.25; }
+        .nav-body { flex:1; display:flex; min-height:0; overflow:hidden; }
+        .nav-rail { width:66px; flex-shrink:0; border-right:1px solid var(--grey-90); display:flex; flex-direction:column; align-items:center; padding:12px 0; gap:4px; overflow-y:auto; }
+        .rail-item { width:40px; height:40px; display:flex; align-items:center; justify-content:center; background:none; border:none; cursor:pointer; color:var(--grey-40); border-radius:var(--radius-lg); }
+        .rail-item:hover { color:var(--white); }
+        .rail-item.active { color:var(--white); }
+        .rail-item.whatsnew { margin-top:auto; }
+        .nav-sub { flex:1; padding:24px; overflow-y:auto; }
+        .nav-sub-header { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:1px; color:var(--grey-40); margin-bottom:12px; }
+        .nav-sub-item { display:block; padding:8px 0; font-size:16px; color:var(--grey-20); text-decoration:none; cursor:pointer; }
+        .nav-sub-item:hover { color:var(--white); }
+        .nav-sub-item.active { color:var(--white); text-decoration:underline; text-underline-offset:4px; }
+        .nav-user { border-top:1px solid var(--grey-90); display:flex; align-items:stretch; flex-shrink:0; }
+        .nav-user-name { flex:1; padding:16px 24px; color:var(--white); font-size:16px; }
+        .nav-user-menu { width:48px; border:none; border-left:1px solid var(--grey-90); background:none; display:flex; align-items:center; justify-content:center; color:var(--grey-40); cursor:pointer; }
+        .main { flex:1; min-width:0; }
+        .page { max-width:1040px; margin:0 auto; padding:40px 32px 72px; }
+
+        /* ── Page header ── */
+        .page-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; gap:16px; }
+        .page-title { font-size:32px; font-weight:600; line-height:1.25; }
+        .page-header-actions { display:flex; gap:8px; flex-shrink:0; }
+
+        /* ── Buttons ── */
+        .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; height:40px; padding:0 16px; font-family:var(--font-ui); font-size:14px; font-weight:600; border-radius:var(--radius-md); cursor:pointer; border:1px solid var(--obsidian); transition:background 0.15s,color 0.15s; white-space:nowrap; }
+        .btn:disabled { opacity:0.45; cursor:not-allowed; }
+        .btn-primary { background:var(--brand-primary); color:var(--obsidian); }
+        .btn-primary:hover:not(:disabled) { background:#d4eb1e; }
+        .btn-secondary { background:var(--white); color:var(--obsidian); }
+        .btn-secondary:hover { background:var(--grey-6); }
+        .btn-tertiary { background:transparent; color:#222222; border:1px solid transparent; }
+        .btn-tertiary:hover { background:#F2F2F2; border-color:#F2F2F2; }
+        .btn-tertiary:active { background:#F2F2F2; border-color:#222222; }
+
+        /* ── Student counter bar ── */
+        .counter-bar { display:flex; align-items:center; justify-content:space-between; padding:10px 16px; background:var(--white); border:1px solid var(--grey-12); border-radius:var(--radius-sm); margin-bottom:16px; }
+        .counter-left { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--grey-70); }
+        .counter-count { font-weight:600; }
+        .counter-count.over { color:#4e4e4e; }
+        .counter-alert { display:flex; align-items:center; }
+        .counter-manage-link { background:none; border:none; cursor:pointer; font-size:13px; font-weight:500; color:var(--obsidian); text-decoration:underline; padding:0; flex-shrink:0; }
+        .counter-near-limit { display:flex; align-items:center; flex-shrink:0; }
+        .counter-near-msg { font-size:13px; color:var(--grey-70); margin-left:10px; }
+        .counter-info-btn { display:flex; align-items:center; background:none; border:none; cursor:pointer; color:var(--grey-40); padding:2px; border-radius:4px; }
+        .counter-info-btn:hover { color:var(--obsidian); }
+        .counter-track { width:120px; flex-shrink:0; height:6px; background:var(--grey-12); border-radius:9999px; overflow:hidden; margin-left:10px; }
+        .counter-fill { height:100%; border-radius:9999px; background:var(--grey-30); transition:width 0.4s ease; }
+        .counter-fill.over { background:#f8c821; }
+        .counter-right { display:flex; align-items:center; gap:6px; }
+        .upgrade-link { display:inline-flex; align-items:center; gap:4px; font-size:14px; font-weight:700; color:var(--obsidian); background:none; border:none; cursor:pointer; font-family:var(--font-ui); padding:4px 8px; border-radius:var(--radius-sm); }
+        .upgrade-link:hover { background:var(--grey-6); }
+
+        /* ── Filter bar ── */
+        .filter-bar { display:flex; align-items:center; gap:12px; margin-bottom:24px; padding:12px 16px; background:var(--white); border:1px solid var(--grey-12); border-radius:var(--radius-sm); }
+        .filter-add { display:flex; align-items:center; gap:4px; color:var(--info-primary); font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; background:none; border:none; font-family:var(--font-ui); }
+        .filter-divider { width:1px; height:20px; background:var(--grey-20); flex-shrink:0; }
+        .filter-search { flex:1; display:flex; align-items:center; gap:8px; color:var(--grey-60); }
+        .filter-search input { flex:1; border:none; outline:none; font-family:var(--font-ui); font-size:14px; color:var(--obsidian); background:transparent; }
+        .filter-search input::placeholder { color:var(--grey-60); }
+        .filter-saved { margin-left:auto; display:flex; align-items:center; gap:4px; color:var(--grey-70); font-size:14px; cursor:pointer; white-space:nowrap; background:none; border:none; font-family:var(--font-ui); }
+
+        /* ── Table ── */
+        .students-count { font-size:18px; font-weight:600; margin-bottom:16px; }
+        .table-wrap { background:var(--white); border:1px solid var(--grey-12); border-radius:var(--radius-sm); overflow:hidden; }
+        table { width:100%; border-collapse:collapse; }
+        thead tr { border-bottom:1px solid var(--grey-12); background:var(--grey-3); }
+        th { padding:10px 10px; text-align:left; font-size:11px; font-weight:600; color:var(--grey-70); letter-spacing:0.4px; text-transform:uppercase; white-space:nowrap; }
+        th:first-child { width:40px; }
+        tbody tr { border-bottom:1px solid var(--grey-12); }
+        tbody tr:last-child { border-bottom:none; }
+        tbody tr:hover { background:var(--grey-3); }
+        td { padding:12px 10px; font-size:13px; color:var(--obsidian); vertical-align:middle; }
+        td:first-child { width:40px; }
+        td:last-child, th:last-child { width:48px; text-align:center; }
+        .student-name-cell { display:flex; align-items:center; gap:10px; }
+        .avatar-group { position:relative; width:36px; height:35px; flex-shrink:0; }
+        .avatar { position:absolute; top:3px; left:4px; right:0; bottom:0; border-radius:9999px; background:#d3d3d3; }
+        .email-action { display:flex; align-items:center; justify-content:center; width:32px; height:32px; border-radius:var(--radius-sm); border:1px solid var(--grey-20); background:var(--white); cursor:pointer; color:var(--grey-60); }
+        .email-action:hover { background:var(--grey-6); }
+        input[type="checkbox"] { width:16px; height:16px; cursor:pointer; accent-color:var(--obsidian); }
+
+        /* ── Shared modal shell ── */
+        .modal-overlay { position:fixed; inset:0; background:rgba(34,34,34,0.5); display:flex; align-items:center; justify-content:center; z-index:100; padding:24px; opacity:0; pointer-events:none; transition:opacity 0.2s; }
+        .modal-overlay.open { opacity:1; pointer-events:auto; }
+        .modal { background:var(--white); border-radius:var(--radius-sm); box-shadow:var(--shadow-modal); width:100%; max-width:680px; max-height:calc(100vh - 48px); display:flex; flex-direction:column; overflow:hidden; transform:translateY(8px); transition:transform 0.2s; }
+        .modal-overlay.open .modal { transform:translateY(0); }
+        .modal-header { display:flex; align-items:flex-start; justify-content:space-between; padding:28px 28px 0; gap:16px; }
+        .modal-title { font-size:24px; font-weight:600; line-height:1.25; }
+        .modal-subtitle { font-size:14px; color:var(--grey-70); margin-top:4px; line-height:1.5; }
+        .modal-close { width:32px; height:32px; display:flex; align-items:center; justify-content:center; background:none; border:none; cursor:pointer; color:var(--grey-60); border-radius:var(--radius-sm); flex-shrink:0; }
+        .modal-close:hover { background:var(--grey-6); color:var(--obsidian); }
+        .modal-body { flex:1; overflow-y:auto; padding:24px 28px; }
+        .modal-footer { display:flex; align-items:center; justify-content:space-between; padding:16px 28px 24px; border-top:1px solid var(--grey-12); gap:12px; }
+        .modal-footer-right { display:flex; gap:8px; align-items:center; }
+        .step-counter { font-size:13px; color:var(--grey-60); }
+
+        /* ── Upload modal: tabs ── */
+        .upload-tabs { display:flex; border-bottom:1px solid var(--grey-12); margin:20px 28px 0; }
+        .upload-tab { padding:10px 16px; font-size:14px; font-weight:500; color:var(--grey-60); cursor:pointer; border:none; background:none; font-family:var(--font-ui); border-bottom:2px solid transparent; margin-bottom:-1px; transition:color 0.15s,border-color 0.15s; }
+        .upload-tab.active { color:var(--obsidian); border-bottom-color:var(--brand-primary); font-weight:600; }
+        .upload-tab:hover:not(.active) { color:var(--obsidian); }
+
+        /* ── Manual form ── */
+        .student-row { display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:12px; align-items:end; margin-bottom:12px; }
+        .field-group label { display:block; font-size:13px; font-weight:600; color:var(--grey-70); margin-bottom:5px; }
+        .input-field { width:100%; height:40px; padding:0 12px; border:1px solid var(--grey-20); border-radius:var(--radius-sm); font-family:var(--font-ui); font-size:14px; color:var(--obsidian); background:var(--white); outline:none; }
+        .input-field:focus { border-color:var(--obsidian); box-shadow:0 0 0 2px rgba(34,34,34,0.08); }
+        .row-remove { width:32px; height:40px; display:flex; align-items:center; justify-content:center; background:none; border:none; cursor:pointer; color:var(--grey-40); border-radius:var(--radius-sm); }
+        .row-remove:hover:not(:disabled) { color:#c0392b; background:var(--grey-6); }
+        .add-another { display:inline-flex; align-items:center; gap:6px; font-size:14px; font-weight:600; color:var(--obsidian); cursor:pointer; background:none; border:none; font-family:var(--font-ui); padding:0; margin-bottom:20px; }
+        .add-another:hover { color:var(--grey-70); }
+        .manual-footer-checks { border-top:1px solid var(--grey-12); padding-top:20px; display:flex; flex-direction:column; gap:12px; margin-bottom:20px; }
+        .check-row { display:flex; align-items:flex-start; gap:10px; }
+        .check-row input { margin-top:2px; flex-shrink:0; }
+        .check-row label { font-size:14px; color:var(--obsidian); line-height:1.5; cursor:pointer; }
+        .select-field { width:100%; height:40px; padding:0 12px; border:1px solid var(--grey-20); border-radius:var(--radius-sm); font-family:var(--font-ui); font-size:14px; color:var(--obsidian); background:var(--white); outline:none; cursor:pointer; appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='%23646464'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 10px center; }
+        .pay-method-label { font-size:14px; font-weight:600; color:var(--obsidian); margin-bottom:6px; display:flex; align-items:center; gap:6px; }
+
+        /* ── CSV tab ── */
+        .csv-hero { display:flex; flex-direction:column; align-items:center; text-align:center; padding:16px 0 24px; }
+        .csv-illustration { width:100px; height:72px; margin-bottom:24px; position:relative; }
+        .csv-card { width:58px; height:48px; border-radius:6px; background:var(--white); border:1.5px solid var(--grey-12); display:flex; flex-direction:column; justify-content:flex-end; padding:6px; box-shadow:0 2px 6px rgba(0,0,0,0.07); position:absolute; }
+        .csv-card-line { height:3px; border-radius:2px; background:var(--grey-12); margin-bottom:3px; }
+        .csv-card-line:last-child { margin-bottom:0; width:60%; }
+        .csv-card-main { left:0; bottom:0; }
+        .csv-card-over { right:0; top:0; border-color:var(--success-primary); }
+        .csv-check-badge { position:absolute; top:-8px; right:-8px; width:20px; height:20px; background:var(--success-primary); border-radius:9999px; display:flex; align-items:center; justify-content:center; border:2px solid var(--white); }
+        .csv-title { font-size:22px; font-weight:700; color:var(--obsidian); margin-bottom:10px; }
+        .csv-desc { font-size:14px; color:var(--grey-70); line-height:1.6; max-width:380px; }
+        .csv-drop { border:2px dashed var(--grey-20); border-radius:var(--radius-md); padding:32px 24px; text-align:center; cursor:pointer; transition:border-color 0.15s,background 0.15s; margin-top:24px; }
+        .csv-drop.drag { border-color:var(--info-primary); background:var(--info-light); }
+        .csv-drop-label { font-size:14px; color:var(--grey-60); margin-top:8px; }
+        .csv-drop-label strong { color:var(--obsidian); }
+        .csv-file-chosen { font-size:13px; color:var(--success-primary); font-weight:600; margin-top:8px; }
+
+        /* ── Step indicator ── */
+        .step-indicator { display:flex; align-items:center; padding-top:24px; padding-right:28px; padding-left:28px; padding-bottom:12px; }
+        .step-item { display:flex; align-items:center; gap:8px; }
+        .step-line { flex:1; height:2px; background:var(--grey-12); margin:0 8px; transition:background 0.2s; }
+        .step-line.complete { background:var(--success-primary); }
+        .step-dot { width:28px; height:28px; border-radius:9999px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; flex-shrink:0; border:2px solid; transition:all 0.2s; }
+        .step-dot-inactive { border-color:var(--grey-20); color:var(--grey-40); background:var(--white); }
+        .step-dot-active { border-color:var(--obsidian); background:var(--obsidian); color:var(--white); }
+        .step-dot-complete { border-color:var(--success-primary); background:var(--success-primary); color:var(--white); }
+        .step-label { font-size:12px; font-weight:600; white-space:nowrap; transition:color 0.2s; }
+        .step-label-inactive { color:var(--grey-40); }
+        .step-label-active { color:var(--obsidian); }
+        .step-label-complete { color:var(--success-primary); }
+
+        /* ── Step 1: Terms ── */
+        .terms-intro { font-size:15px; color:var(--grey-90); line-height:1.6; margin-bottom:20px; }
+        .terms-scroll-box { border:1px solid var(--grey-12); border-radius:var(--radius-sm); background:var(--grey-3); padding:20px; height:200px; overflow-y:auto; font-size:13px; color:var(--grey-70); line-height:1.65; margin-bottom:20px; }
+        .terms-scroll-box h3 { font-size:13px; font-weight:600; color:var(--obsidian); margin-bottom:8px; margin-top:16px; }
+        .terms-scroll-box h3:first-child { margin-top:0; }
+        .terms-scroll-box p { margin-bottom:10px; }
+        .terms-checks { display:flex; flex-direction:column; gap:12px; }
+        .terms-check-row { display:flex; align-items:flex-start; gap:10px; }
+        .terms-check-row input[type="checkbox"] { margin-top:2px; flex-shrink:0; }
+        .terms-check-row label { font-size:14px; color:var(--obsidian); line-height:1.5; cursor:pointer; }
+        .terms-check-row label a { color:var(--obsidian); font-weight:600; text-decoration:underline; text-underline-offset:2px; }
+
+        /* ── Step 2: Payments ── */
+        .payments-hero { display:flex; align-items:center; justify-content:space-between; gap:24px; background:var(--obsidian); border-radius:var(--radius-sm); padding:24px; margin-bottom:24px; }
+        .payments-hero-text .wordmark { color:var(--brand-primary); font-weight:700; font-size:16px; letter-spacing:-0.5px; margin-bottom:8px; display:block; }
+        .payments-hero-text p { font-size:16px; font-weight:600; line-height:1.4; color:var(--white); max-width:260px; }
+        .payments-hero-graphic { flex-shrink:0; width:80px; height:80px; background:linear-gradient(154deg,#B6F2E8,#F8FFC6); border-radius:var(--radius-lg); display:flex; align-items:center; justify-content:center; }
+        .payments-sub-steps { display:flex; gap:8px; margin-bottom:20px; }
+        .payments-sub-step { flex:1; padding:8px 12px; border-radius:var(--radius-sm); border:1px solid var(--grey-12); background:var(--grey-3); font-size:12px; font-weight:600; color:var(--grey-40); text-align:center; }
+        .payments-sub-step.active { border-color:var(--obsidian); background:var(--white); color:var(--obsidian); }
+        .form-section { margin-bottom:20px; }
+        .form-section > label { display:block; font-size:14px; font-weight:600; color:var(--obsidian); margin-bottom:6px; }
+        .form-section .helper { font-size:12px; color:var(--grey-60); margin-top:4px; }
+        .form-row-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+        .pay-input { width:100%; height:40px; padding:0 12px; border:1px solid var(--grey-60); border-radius:var(--radius-sm); font-family:var(--font-ui); font-size:14px; color:var(--obsidian); background:var(--white); outline:none; }
+        .pay-input:focus { border-color:var(--obsidian); box-shadow:0 0 0 2px rgba(34,34,34,0.08); }
+        .pay-select { width:100%; height:40px; padding:0 12px; border:1px solid var(--grey-60); border-radius:var(--radius-sm); font-family:var(--font-ui); font-size:14px; color:var(--obsidian); background:var(--white); outline:none; cursor:pointer; appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='%23646464'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 10px center; }
+        .phone-wrap { display:flex; border:1px solid var(--grey-60); border-radius:var(--radius-sm); overflow:hidden; background:var(--white); }
+        .phone-wrap:focus-within { border-color:var(--obsidian); box-shadow:0 0 0 2px rgba(34,34,34,0.08); }
+        .phone-country { height:40px; padding:0 10px; border:none; border-right:1px solid var(--grey-20); background:var(--grey-6); font-family:var(--font-ui); font-size:14px; color:var(--obsidian); cursor:pointer; outline:none; }
+        .phone-number { flex:1; height:40px; padding:0 12px; border:none; font-family:var(--font-ui); font-size:14px; color:var(--grey-40); background:var(--white); outline:none; }
+        .info-note { display:flex; align-items:flex-start; gap:10px; background:var(--info-light); border:1px solid #c5d8ff; border-radius:var(--radius-sm); padding:12px; font-size:13px; color:var(--grey-90); line-height:1.5; }
+        .pay-removed-note { display:flex; align-items:flex-start; gap:10px; background:#feffc2; border:1px solid #e7ff33; border-radius:var(--radius-sm); padding:12px; font-size:13px; color:#3a3a00; line-height:1.5; margin-top:12px; }
+
+        /* ── Step 3: Seat options ── */
+        .s3-heading { text-align:center; margin-bottom:20px; }
+        .s3-heading h3 { font-size:20px; font-weight:700; color:var(--obsidian); line-height:1.3; margin-bottom:6px; }
+        .s3-heading p { font-size:14px; color:var(--grey-70); }
+
+        /* Mode selector tabs */
+        .mode-tabs { display:flex; gap:0; border:1.5px solid var(--grey-12); border-radius:var(--radius-md); overflow:hidden; margin-bottom:20px; }
+        .mode-tab { flex:1; padding:10px 16px; font-size:13px; font-weight:600; color:var(--grey-60); cursor:pointer; border:none; background:var(--grey-3); font-family:var(--font-ui); text-align:center; transition:all 0.15s; border-right:1.5px solid var(--grey-12); }
+        .mode-tab:last-child { border-right:none; }
+        .mode-tab.active { background:var(--white); color:var(--obsidian); }
+        .mode-tab:hover:not(.active) { background:var(--grey-6); color:var(--obsidian); }
+
+        /* Upgrade plan view */
+        .billing-toggle { display:flex; align-items:center; justify-content:center; margin-bottom:20px; }
+        .billing-pills { display:inline-flex; border:1.5px solid var(--grey-20); border-radius:9999px; overflow:hidden; background:var(--grey-6); padding:3px; gap:3px; }
+        .billing-pill { padding:6px 18px; border-radius:9999px; font-size:14px; font-weight:500; cursor:pointer; border:none; background:transparent; font-family:var(--font-ui); color:var(--grey-70); transition:all 0.15s; display:flex; align-items:center; gap:6px; }
+        .billing-pill.active { background:var(--obsidian); color:var(--white); font-weight:600; }
+
+        .plan-card { border:1.5px solid var(--grey-12); border-radius:var(--radius-md); overflow:hidden; margin-bottom:10px; }
+        .plan-card-label { font-size:11px; font-weight:700; letter-spacing:1px; text-transform:uppercase; padding:8px 16px; }
+        .plan-card-label.recommended { background:#e8f8f0; color:#1a7a45; border-bottom:1.5px solid #b8ead0; }
+        .plan-card-label.current { background:var(--grey-3); color:var(--grey-60); border-bottom:1.5px solid var(--grey-12); }
+        .plan-card.recommended-card { border-color:#b8ead0; }
+        .plan-card-body { padding:16px; }
+        .plan-card-row { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:10px; }
+        .plan-name { font-size:17px; font-weight:700; color:var(--obsidian); }
+        .plan-price { font-size:17px; font-weight:700; color:var(--obsidian); }
+        .plan-price span { font-size:13px; font-weight:400; color:var(--grey-60); }
+        .plan-features { display:flex; flex-direction:column; gap:4px; }
+        .plan-feature { font-size:14px; color:var(--grey-90); display:flex; align-items:center; gap:6px; }
+        .plan-feature::before { content:'·'; font-weight:700; }
+        .upgrade-links { text-align:center; margin:12px 0 6px; }
+        .upgrade-links a { font-size:14px; color:var(--obsidian); font-weight:600; text-underline-offset:3px; }
+        .upgrade-guarantee { text-align:center; font-size:13px; color:var(--grey-60); line-height:1.6; padding-top:10px; border-top:1px solid var(--grey-12); }
+        .upgrade-guarantee a { color:var(--obsidian); font-weight:600; }
+
+        /* Pay for extra seats view */
+        .pay-seat-card { border:2px solid var(--obsidian); border-radius:var(--radius-md); padding:20px; display:flex; gap:16px; align-items:flex-start; background:var(--white); }
+        .pay-seat-radio { width:22px; height:22px; border-radius:9999px; background:var(--brand-primary); border:2px solid var(--obsidian); display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px; }
+        .pay-seat-radio-dot { width:8px; height:8px; background:var(--obsidian); border-radius:9999px; }
+        .pay-seat-icon { width:40px; height:40px; background:var(--info-light); border-radius:var(--radius-md); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+        .pay-seat-badge { display:inline-block; font-size:11px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; padding:3px 10px; border:1.5px solid var(--grey-20); border-radius:var(--radius-sm); color:var(--grey-70); background:var(--white); margin-bottom:8px; }
+        .pay-seat-title { font-size:16px; font-weight:700; color:var(--obsidian); margin-bottom:6px; }
+        .pay-seat-desc { font-size:13px; color:var(--grey-70); line-height:1.55; margin-bottom:12px; }
+        .pay-seat-price { font-size:14px; color:var(--obsidian); }
+        .pay-seat-price strong { font-weight:700; }
+        .pay-seat-price span { color:var(--grey-60); }
+
+        /* ── Pending / over-limit rows ── */
+        tr.pending-row { background:#ffffff; }
+        tr.pending-row:hover { background:#fafafa; }
+        tr.pending-row td { color:#222222; }
+        tr td { color:#222222; }
+        .avatar-exclaim { position:absolute; top:0; left:0; display:flex; z-index:1; }
+        .exclaim-badge { width:14px; height:14px; border-radius:9999px; background:#f8c821; display:flex; align-items:center; justify-content:center; filter:drop-shadow(0 0 0 white); }
+        .warn-icon-wrap { position:relative; display:flex; align-items:center; }
+        .warn-btn { display:flex; align-items:center; justify-content:center; background:none; border:none; cursor:pointer; padding:0; border-radius:4px; flex-shrink:0; }
+        .warn-tooltip { position:absolute; left:calc(100% + 8px); top:50%; transform:translateY(-50%); background:var(--obsidian); color:var(--white); font-size:12px; line-height:1.45; white-space:nowrap; padding:7px 10px; border-radius:var(--radius-md); box-shadow:0 4px 12px rgba(0,0,0,0.18); z-index:50; pointer-events:none; max-width:260px; white-space:normal; width:240px; }
+        .warn-tooltip::before { content:''; position:absolute; right:100%; top:50%; transform:translateY(-50%); border:5px solid transparent; border-right-color:var(--obsidian); }
+        .status-badge { font-size:13px; font-weight:400; color:#222222; }
+
+        /* ── "Add Students" danger state ── */
+        .btn-danger { background:#c0392b; color:var(--white); border-color:#c0392b; }
+        .btn-danger:hover:not(:disabled) { background:#a93226; border-color:#a93226; }
+
+        /* ── Counter bar message ── */
+        .counter-msg { font-size:13px; color:var(--grey-70); font-weight:500; margin-left:10px; }
+
+        /* ── Drawer ── */
+        .drawer-toggle { position:fixed; right:0; top:50%; transform:translateY(-50%); z-index:200; background:none; border:none; padding:0; cursor:pointer; }
+        .drawer-toggle-pill { width:28px; height:52px; background:var(--white); border-radius:12px 0 0 12px; box-shadow:-2px 0 8px rgba(0,0,0,0.12); display:flex; align-items:center; justify-content:center; transition:width 0.15s; }
+        .drawer-toggle:hover .drawer-toggle-pill { width:32px; }
+        .drawer { position:fixed; top:0; right:0; height:100vh; width:280px; background:var(--white); box-shadow:-4px 0 24px rgba(0,0,0,0.12); z-index:199; display:flex; flex-direction:column; transform:translateX(100%); transition:transform 0.25s cubic-bezier(0.4,0,0.2,1); }
+        .drawer.open { transform:translateX(0); }
+        .drawer-header { display:flex; align-items:center; justify-content:space-between; padding:20px 20px 16px; border-bottom:1px solid var(--grey-12); }
+        .drawer-title { font-size:15px; font-weight:700; color:var(--obsidian); }
+        .drawer-close { width:28px; height:28px; display:flex; align-items:center; justify-content:center; background:none; border:none; cursor:pointer; color:var(--grey-60); border-radius:var(--radius-sm); }
+        .drawer-close:hover { background:var(--grey-6); color:var(--obsidian); }
+        .drawer-body { flex:1; padding:20px; overflow-y:auto; }
+        .drawer-section-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--grey-40); margin-bottom:14px; }
+        .drawer-check-row { display:flex; align-items:center; gap:10px; padding:10px 12px; border:1.5px solid var(--grey-12); border-radius:var(--radius-md); margin-bottom:8px; cursor:pointer; transition:border-color 0.15s,background 0.15s; }
+        .drawer-check-row:hover { border-color:var(--grey-30); background:var(--grey-3); }
+        .drawer-check-row.checked { border-color:var(--obsidian); background:var(--grey-3); }
+        .drawer-check-row input[type="checkbox"] { width:16px; height:16px; accent-color:var(--obsidian); cursor:pointer; flex-shrink:0; }
+        .drawer-check-label { font-size:14px; font-weight:500; color:var(--obsidian); cursor:pointer; flex:1; }
+        .drawer-error { display:flex; align-items:center; gap:7px; background:#fff0ee; border:1px solid #f5c0bb; border-radius:var(--radius-sm); padding:10px 12px; font-size:13px; color:#c0392b; margin-top:4px; line-height:1.45; }
+        .drawer-toggle-row { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border:1.5px solid var(--grey-12); border-radius:var(--radius-md); margin-bottom:8px; }
+        .drawer-toggle-label { font-size:14px; font-weight:500; color:var(--obsidian); flex:1; }
+        .toggle-switch { position:relative; width:36px; height:20px; flex-shrink:0; cursor:pointer; }
+        .toggle-switch input { opacity:0; width:0; height:0; }
+        .toggle-track { position:absolute; inset:0; border-radius:9999px; background:var(--grey-20); transition:background 0.2s; }
+        .toggle-switch input:checked + .toggle-track { background:var(--obsidian); }
+        .toggle-thumb { position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:9999px; background:var(--white); transition:left 0.2s; }
+        .toggle-switch input:checked ~ .toggle-thumb { left:18px; }
+        .drawer-step-preview { margin-top:20px; padding-top:16px; border-top:1px solid var(--grey-12); }
+        .drawer-preview-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--grey-40); margin-bottom:12px; }
+        .drawer-preview-steps { display:flex; flex-direction:column; gap:8px; }
+        .drawer-preview-step { display:flex; align-items:center; gap:10px; font-size:13px; color:var(--grey-70); }
+        .drawer-preview-num { width:22px; height:22px; border-radius:9999px; background:var(--obsidian); color:var(--white); font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+
+        /* ── Toast ── */
+        .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--obsidian); color:var(--white); font-family:var(--font-ui); font-size:14px; font-weight:600; padding:12px 20px; border-radius:var(--radius-sm); box-shadow:0 4px 16px rgba(0,0,0,0.2); z-index:9999; display:flex; align-items:center; gap:8px; animation:toastIn 0.2s ease; }
+        @keyframes toastIn { from { opacity:0; transform:translateX(-50%) translateY(8px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+      `}</style>
+
+      {/* ══════════ PAGE ══════════ */}
+      <div className="app">
+        <nav className="nav">
+          <div className="nav-school"><span className="nav-school-name">Tasha School</span></div>
+          <div className="nav-body">
+            <div className="nav-rail">
+              {[
+                { icon: 'show_chart', label: 'Dashboard' },
+                { icon: 'group', label: 'Users', active: true },
+                { icon: 'devices', label: 'Site' },
+                { icon: 'paid', label: 'Sales' },
+                { icon: 'mail', label: 'Emails' },
+                { icon: 'dashboard_customize', label: 'Apps' },
+                { icon: 'settings', label: 'Settings' },
+                { icon: 'video_library', label: 'Courses' },
+                { icon: 'event', label: 'Coaching' },
+                { icon: 'file_save', label: 'Downloads' },
+                { icon: 'forum', label: 'Communities' },
+                { icon: 'key', label: 'Admin' },
+              ].map(({ icon, label, active }) => (
+                <button key={icon} className={`rail-item${active ? ' active' : ''}`} type="button" aria-label={label}>
+                  <MSO icon={icon} size={24} fill={active ? 1 : 0} />
+                </button>
+              ))}
+              <button className="rail-item whatsnew" type="button" aria-label="What's new">
+                <MSO icon="bolt" size={24} />
+              </button>
+            </div>
+            <div className="nav-sub">
+              <div className="nav-sub-header">Users</div>
+              {['Students', 'Leads', 'Admins', 'Affiliates', 'Organizations', 'Tags'].map(item => (
+                <a key={item} className={`nav-sub-item${item === 'Students' ? ' active' : ''}`} href="#">
+                  {item}
+                  {item === 'Organizations' && <sup style={{ fontSize: 10, color: '#E7FF33', fontWeight: 700, marginLeft: 4 }}>BETA</sup>}
+                </a>
+              ))}
+            </div>
+          </div>
+          <div className="nav-user">
+            <span className="nav-user-name">Natasha Abe Higa</span>
+            <button className="nav-user-menu" type="button" aria-label="Account menu"><MSO icon="more_vert" /></button>
+          </div>
+        </nav>
+
+        <div className="main">
+          <main className="page">
+            {/* Page header */}
+            <div className="page-header">
+              <h1 className="page-title">Students</h1>
+              <div className="page-header-actions">
+                <button className="btn btn-secondary" type="button">Export CSV</button>
+                <button className="btn btn-secondary" type="button">Email Students</button>
+                <button
+                  className="btn btn-primary"
+                  type="button"
+                  onClick={confirmed ? undefined : openUpload}
+                  disabled={uploaded && !confirmed}
+                  style={
+                    uploaded && !confirmed
+                      ? { backgroundColor: '#e4e4e4', color: '#a7a7a7', borderColor: '#e4e4e4', cursor: 'not-allowed', opacity: 1 }
+                      : confirmed
+                      ? { backgroundColor: '#E7FF33', color: '#222222', border: '1px solid #222222' }
+                      : undefined
+                  }
+                >
+                  Add Students
+                </button>
+              </div>
+            </div>
+
+            {/* ── Student counter bar ── */}
+            <div
+              className="counter-bar"
+              style={uploaded && !confirmed ? { backgroundColor: '#fff7dc', border: '1px solid #f8c821' } : undefined}
+            >
+              <div className="counter-left">
+                {uploaded && !confirmed && (
+                  <div className="counter-alert">
+                    <MSO icon="warning" size={18} fill={1} style={{ color: '#f8c821' }} />
+                  </div>
+                )}
+                <span className={`counter-count${uploaded && !confirmed ? ' over' : ''}`}>
+                  {counterLabel}
+                </span>
+                <div className="counter-track">
+                <div
+                  className={`counter-fill${uploaded && !confirmed ? ' over' : ''}`}
+                  style={{ width: `${fillPct}%` }}
+                />
+                </div>
+                {nearLimit && !uploaded && !confirmed && (
+                  <span className="counter-near-msg">You are almost out of seats in your plan.</span>
+                )}
+                {uploaded && !confirmed && (
+                  <span className="counter-msg">
+                    Your upload is almost done.
+                  </span>
+                )}
+              </div>
+              {uploaded && !confirmed && (
+                <button type="button" className="counter-manage-link" onClick={openSetup}>
+                  Manage upload
+                </button>
+              )}
+              {nearLimit && !uploaded && !confirmed && (
+                <div className="counter-near-limit">
+                  <button type="button" className="counter-manage-link" onClick={() => { setSetupOpen(true); setSeatOnlyModal(true); setStep(1) }}>
+                    Manage uploads
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Filter bar */}
+            <div className="filter-bar">
+              <button className="filter-add" type="button">
+                <MSO icon="add" size={16} />Add Filter<MSO icon="expand_more" size={16} style={{ color: 'var(--grey-40)' }} />
+              </button>
+              <div className="filter-divider" />
+              <div className="filter-search">
+                <MSO icon="search" size={18} />
+                <input type="text" placeholder="Search for a user by name or email" />
+              </div>
+              <button className="filter-saved" type="button">
+                Saved Filters<MSO icon="expand_more" size={16} />
+              </button>
+            </div>
+
+            {/* Students table */}
+            <div className="students-count">
+              Showing 1 – {students.length} of {students.length} Students
+            </div>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th><input type="checkbox" checked={allSelected} onChange={e => toggleAll(e.target.checked)} aria-label="Select all" /></th>
+                    <th>Name</th><th>Email</th><th style={{width:'90px'}}>Email opt out</th><th style={{width:'100px'}}>Status</th>
+                    <th style={{width:'90px'}}>Last login</th><th style={{width:'90px'}}>Joined</th><th style={{width:'80px'}}>Purchases</th><th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {students.map(s => {
+                    const isPending = uploaded && !confirmed && PENDING_IDS.has(s.id)
+                    return (
+                    <tr key={s.id} className={isPending ? 'pending-row' : ''}>
+                      <td><input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleOne(s.id)} aria-label={`Select ${s.name}`} /></td>
+                      <td>
+                        <div className="student-name-cell">
+                          <div className="avatar-group">
+                            <div className="avatar"></div>
+                            {isPending && (
+                              <div
+                                className="warn-icon-wrap avatar-exclaim"
+                                onMouseEnter={() => setTooltipId(s.id)}
+                                onMouseLeave={() => setTooltipId(null)}
+                              >
+                                <div className="exclaim-badge">
+                                  <svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M4 0.8V4.8" stroke="white" strokeWidth="1.44" strokeLinecap="round"/>
+                                    <path d="M4 7.52C4.39765 7.52 4.72 7.19765 4.72 6.8C4.72 6.40235 4.39765 6.08 4 6.08C3.60236 6.08 3.28 6.40235 3.28 6.8C3.28 7.19765 3.60236 7.52 4 7.52Z" fill="white"/>
+                                  </svg>
+                                </div>
+                                {tooltipId === s.id && (
+                                  <div className="warn-tooltip">
+                                    This student is not yet clear to use Teachable's platform. Take a look at Manage upload.
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          {s.name}
+                        </div>
+                      </td>
+                      <td>{s.email}</td>
+                      <td>{s.optOut ? 'Yes' : 'No'}</td>
+                      <td>
+                        {isPending
+                          ? <span className="status-badge validation">On validation</span>
+                          : <span className="status-badge confirmed">Confirmed</span>
+                        }
+                      </td>
+                      <td>{s.lastLogin}</td>
+                      <td>{s.joined}</td>
+                      <td>{s.purchases}</td>
+                      <td>
+                        <button className="email-action" aria-label="Email"><MSO icon="mail" size={16} /></button>
+                      </td>
+                    </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </main>
+        </div>
+      </div>
+
+      {/* ══════════ UPLOAD MODAL ══════════ */}
+      <div
+        ref={uploadOverlayRef}
+        className={`modal-overlay${uploadOpen ? ' open' : ''}`}
+        role="dialog" aria-modal="true" aria-labelledby="uploadTitle"
+        onClick={e => { if (e.target === uploadOverlayRef.current) closeUpload() }}
+      >
+        <div className="modal">
+          <div className="modal-header">
+            <h2 className="modal-title" id="uploadTitle">Add Students</h2>
+            <button className="modal-close" type="button" onClick={closeUpload} aria-label="Close">
+              <MSO icon="close" />
+            </button>
+          </div>
+
+          <div className="upload-tabs">
+            <button className={`upload-tab${uploadTab === 'manually' ? ' active' : ''}`} onClick={() => setUploadTab('manually')}>Manually</button>
+            <button className={`upload-tab${uploadTab === 'csv' ? ' active' : ''}`} onClick={() => setUploadTab('csv')}>Import CSV</button>
+          </div>
+
+          <div className="modal-body">
+            {/* ── Manually ── */}
+            {uploadTab === 'manually' && (
+              <div>
+                {studentRows.map((row, idx) => (
+                  <div key={row.id} className="student-row">
+                    <div className="field-group">
+                      {idx === 0 && <label>Name</label>}
+                      <input className="input-field" type="text" placeholder="Full name" value={row.name} onChange={e => updateRow(row.id, 'name', e.target.value)} autoComplete="off" data-gramm="false" data-gramm_editor="false" />
+                    </div>
+                    <div className="field-group">
+                      {idx === 0 && <label>Email</label>}
+                      <input className="input-field" type="email" placeholder="Email address" value={row.email} onChange={e => updateRow(row.id, 'email', e.target.value)} autoComplete="off" data-gramm="false" data-gramm_editor="false" />
+                    </div>
+                    <div className="field-group">
+                      {idx === 0 && <label>Password (Optional)</label>}
+                      <input className="input-field" type="password" placeholder="Password" value={row.password} onChange={e => updateRow(row.id, 'password', e.target.value)} autoComplete="off" data-gramm="false" data-gramm_editor="false" />
+                    </div>
+                    <button
+                      className="row-remove"
+                      style={{ marginTop: idx === 0 ? 22 : 0 }}
+                      onClick={() => studentRows.length > 1 && removeRow(row.id)}
+                      disabled={studentRows.length === 1}
+                      aria-label="Remove row"
+                    >
+                      <MSO icon="close" size={16} />
+                    </button>
+                  </div>
+                ))}
+                <button className="add-another" type="button" onClick={addRow}>
+                  <MSO icon="add" size={18} />Add another
+                </button>
+                <div className="manual-footer-checks">
+                  <div className="check-row">
+                    <input type="checkbox" id="enroll" checked={enroll} onChange={e => setEnroll(e.target.checked)} />
+                    <label htmlFor="enroll">Enroll these students into a product</label>
+                  </div>
+                  <div className="check-row">
+                    <input type="checkbox" id="consent" checked={consent} onChange={e => setConsent(e.target.checked)} />
+                    <label htmlFor="consent">I confirm these users have consented to receiving emails from my school</label>
+                  </div>
+                  <div>
+                    <div className="pay-method-label">
+                      How did your student(s) pay you for access to your product(s)?
+                      <MSO icon="info" size={16} style={{ color: 'var(--grey-40)' }} />
+                    </div>
+                    <select className="select-field" value={payMethod} onChange={e => setPayMethod(e.target.value)}>
+                      <option value="">Select method</option>
+                      <option value="stripe">Stripe</option>
+                      <option value="paypal">PayPal</option>
+                      <option value="bank">Bank transfer</option>
+                      <option value="cash">Cash</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Import CSV ── */}
+            {uploadTab === 'csv' && (
+              <div>
+                <div className="csv-hero">
+                  <div className="csv-illustration">
+                    <div className="csv-card csv-card-main">
+                      <div className="csv-card-line" style={{ width: '80%' }} />
+                      <div className="csv-card-line" style={{ width: '65%' }} />
+                      <div className="csv-card-line" />
+                    </div>
+                    <div className="csv-card csv-card-over">
+                      <div className="csv-card-line" style={{ width: '80%', background: '#b8ead0' }} />
+                      <div className="csv-card-line" style={{ width: '65%', background: '#b8ead0' }} />
+                      <div className="csv-card-line" style={{ background: '#b8ead0' }} />
+                      <div className="csv-check-badge">
+                        <MSO icon="check" size={12} fill={1} wght={700} style={{ color: 'var(--white)' }} />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="csv-title">Bulk Import Users</div>
+                  <p className="csv-desc">Bulk import a CSV of users and optionally enroll them into a course.</p>
+                </div>
+                <div
+                  className={`csv-drop${csvDrag ? ' drag' : ''}`}
+                  onDragOver={e => { e.preventDefault(); setCsvDrag(true) }}
+                  onDragLeave={() => setCsvDrag(false)}
+                  onDrop={e => {
+                    e.preventDefault(); setCsvDrag(false)
+                    const f = e.dataTransfer.files[0]; if (f) setCsvFile(f.name)
+                  }}
+                  onClick={() => {
+                    const inp = document.createElement('input')
+                    inp.type = 'file'; inp.accept = '.csv'
+                    inp.onchange = () => { if (inp.files?.[0]) setCsvFile(inp.files[0].name) }
+                    inp.click()
+                  }}
+                >
+                  <MSO icon="upload_file" size={28} style={{ color: 'var(--grey-40)', marginBottom: 8 }} />
+                  <div className="csv-drop-label">
+                    <strong>Click to upload</strong> or drag and drop a CSV file
+                  </div>
+                  {csvFile && <div className="csv-file-chosen">✓ {csvFile}</div>}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="modal-footer">
+            <div />
+            <div className="modal-footer-right">
+              <button className="btn btn-secondary" type="button" onClick={closeUpload}>Cancel</button>
+              <button className="btn btn-primary" type="button" onClick={handleImport}>Import</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ══════════ 3-STEP SETUP MODAL ══════════ */}
+      <div
+        ref={setupOverlayRef}
+        className={`modal-overlay${setupOpen ? ' open' : ''}`}
+        role="dialog" aria-modal="true" aria-labelledby="setupTitle"
+        onClick={e => { if (e.target === setupOverlayRef.current) closeSetup() }}
+      >
+        <div className="modal">
+          <div className="modal-header">
+            <div>
+              <h2 className="modal-title" id="setupTitle">Add Students</h2>
+              <p className="modal-subtitle">{
+                currentStepKey === 'terms'    ? 'Review and agree to the upload terms before proceeding.' :
+                currentStepKey === 'payments' ? 'Set up Teachable Payments to enable payouts from student transactions.' :
+                'Choose how to handle the additional students beyond your plan limit.'
+              }</p>
+            </div>
+            <button className="modal-close" type="button" onClick={closeSetup} aria-label="Close"><MSO icon="close" /></button>
+          </div>
+
+          {/* Step indicator — dynamic */}
+          {!seatOnlyModal && totalSteps > 1 && <div className="step-indicator">
+            {activeSteps.map((s, idx) => {
+              const i = idx + 1
+              return (
+                <Fragment key={s.key}>
+                  <div className="step-item">
+                    <div className={`step-dot ${dotClass(i)}`}>
+                      {i < step ? <MSO icon="check" size={14} wght={600} fill={1} /> : i}
+                    </div>
+                    <span className={`step-label ${labelClass(i)}`}>{s.label}</span>
+                  </div>
+                  {i < totalSteps && <div className={`step-line${step > i ? ' complete' : ''}`} />}
+                </Fragment>
+              )
+            })}
+          </div>}
+
+          <div className="modal-body">
+            {/* ── Terms ── */}
+            {currentStepKey === 'terms' && (
+              <div>
+                <p className="terms-intro">Before uploading students, please review and agree to Teachable's upload policies and terms of service. These ensure all imported data complies with privacy regulations.</p>
+                <div className="terms-scroll-box" tabIndex={0}>
+                  <h3>1. Data Privacy &amp; Consent</h3>
+                  <p>By uploading student data, you confirm that you have obtained the necessary consents from your students to share their personal information with Teachable in accordance with applicable privacy laws, including GDPR and CCPA.</p>
+                  <h3>2. Acceptable Use of Student Data</h3>
+                  <p>Student data uploaded to Teachable may only be used for the purpose of enrolling students in your courses and communicating with them about their learning.</p>
+                  <h3>3. Anti-Spam Policy</h3>
+                  <p>By importing and enrolling students, you confirm these individuals have consented to receive emails from your school. Sending unsolicited emails is a violation of Teachable's Terms of Service.</p>
+                  <h3>4. Accuracy of Data</h3>
+                  <p>You are responsible for ensuring the accuracy and integrity of the data you upload. Teachable is not liable for errors resulting from incorrect or incomplete student data provided by you.</p>
+                  <h3>5. Compliance with Laws</h3>
+                  <p>You agree to comply with all applicable laws and regulations in connection with your use of Teachable's bulk student upload feature.</p>
+                </div>
+                <div className="terms-checks">
+                  <div className="terms-check-row">
+                    <input type="checkbox" id="terms-privacy" checked={termsPrivacy} onChange={e => setTermsPrivacy(e.target.checked)} />
+                    <label htmlFor="terms-privacy">I confirm I have obtained consent from these students to share their data with Teachable in compliance with applicable <a href="#" onClick={e => e.preventDefault()}>privacy laws</a> (GDPR, CCPA).</label>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Payments ── */}
+            {currentStepKey === 'payments' && (
+              <div>
+                <div className="payments-hero">
+                  <div className="payments-hero-text">
+                    <span className="wordmark">teachable</span>
+                    <p>Teachable Payments partners with Stripe for secure payments and financial services.</p>
+                  </div>
+                  <div className="payments-hero-graphic">
+                    <MSO icon="payments" size={40} fill={1} wght={300} style={{ color: 'var(--navy)' }} />
+                  </div>
+                </div>
+                <p style={{ fontSize: 14, color: 'var(--grey-70)', marginBottom: 20, lineHeight: 1.5 }}>
+                  Select the country where your business or earnings are based and we'll redirect you to Stripe to get setup and start selling:
+                </p>
+                <div className="form-section">
+                  <label htmlFor="pay-country" style={{ fontSize: 12, fontWeight: 600, color: 'var(--grey-70)', marginBottom: 6, display: 'block' }}>Country</label>
+                  <select className="pay-select" id="pay-country" value={payCountry} onChange={e => setPayCountry(e.target.value)}>
+                    <option value="">Select one</option>
+                    {Object.keys(COUNTRY_ELIGIBILITY).sort().map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+                {payCountry && COUNTRY_ELIGIBILITY[payCountry] === 'Removed' && (
+                  <div className="pay-removed-note">
+                    <MSO icon="lightbulb" size={18} fill={1} style={{ color: '#7a7a00', flexShrink: 0 }} />
+                    <span>You will be redirected to Stripe to continue setting up your payment for a Custom Payment Gateway.</span>
+                  </div>
+                )}
+                <p style={{ fontSize: 14, marginTop: 16, marginBottom: 0 }}>
+                  {"Need help with this setup? "}
+                  <a href="#" onClick={e => e.preventDefault()} style={{ fontWeight: 700, textDecoration: 'underline', color: 'inherit' }}>Contact our sales team</a>
+                </p>
+              </div>
+            )}
+
+            {/* ── Seat options ── */}
+            {currentStepKey === 'seats' && (
+              <div>
+                <div className="s3-heading">
+                  <h3>Your plan has a limit of {SEAT_LIMIT} students</h3>
+                  <p style={{ color: '#222222' }}>Avoid leaving your business out of seats by choosing one of the options</p>
+                  <p style={{ color: '#222222' }}>Wanna discuss your options? <a href="#" onClick={e => e.preventDefault()} style={{ textDecoration: 'underline', color: '#222222', fontWeight: 700 }}>Reach out</a> our sales team!</p>
+                </div>
+
+                {/* Mode selector */}
+                <div className="mode-tabs">
+                  <button
+                    className={`mode-tab${step3Mode === 'upgrade' ? ' active' : ''}`}
+                    onClick={() => setStep3Mode('upgrade')}
+                  >
+                    Upgrade plan
+                  </button>
+                  <button
+                    className={`mode-tab${step3Mode === 'pay' ? ' active' : ''}`}
+                    onClick={() => setStep3Mode('pay')}
+                  >
+                    Pay for extra seats
+                  </button>
+                </div>
+
+                {/* ── Upgrade plan ── */}
+                {step3Mode === 'upgrade' && (
+                  <div>
+                    <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--grey-70)', marginBottom: 10 }}>
+                      Select billing frequency
+                    </div>
+                    <div className="billing-toggle">
+                      <div className="billing-pills">
+                        <button className={`billing-pill${billing === 'monthly' ? ' active' : ''}`} onClick={() => setBilling('monthly')}>
+                          {billing === 'monthly' && <MSO icon="check" size={14} fill={1} />}Monthly
+                        </button>
+                        <button className={`billing-pill${billing === 'annually' ? ' active' : ''}`} onClick={() => setBilling('annually')}>
+                          {billing === 'annually' && <MSO icon="check" size={14} fill={1} />}Annually
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="plan-card recommended-card">
+                      <div className="plan-card-label recommended">Recommended for you</div>
+                      <div className="plan-card-body">
+                        <div className="plan-card-row">
+                          <div className="plan-name">Growth</div>
+                          <div className="plan-price">
+                            {billing === 'monthly' ? '$189' : '$1,668'}
+                            <span>{billing === 'monthly' ? ' /month' : ' /year'}</span>
+                          </div>
+                        </div>
+                        <div className="plan-features">
+                          <div className="plan-feature">50 published products</div>
+                          <div className="plan-feature">White label website</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="plan-card">
+                      <div className="plan-card-label current">Your current plan</div>
+                      <div className="plan-card-body">
+                        <div className="plan-card-row">
+                          <div className="plan-name">Builder</div>
+                          <div className="plan-price">$89 <span>/month</span></div>
+                        </div>
+                        <div className="plan-features">
+                          <div className="plan-feature">{SEAT_LIMIT} students</div>
+                          <div className="plan-feature">5 published products</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="upgrade-links">
+                      <a href="#" onClick={e => e.preventDefault()}>View all plans details</a>
+                    </div>
+                    <div className="upgrade-guarantee">
+                      All paid plans include education and training to help you on your journey, plus a{' '}
+                      <a href="#" onClick={e => e.preventDefault()}>30-day money-back guarantee</a>.
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Pay for extra seats ── */}
+                {step3Mode === 'pay' && (
+                  <div>
+                    <div className="pay-seat-card">
+                      <div className="pay-seat-radio">
+                        <div className="pay-seat-radio-dot" />
+                      </div>
+                      <div className="pay-seat-icon">
+                        <MSO icon="credit_card" size={22} fill={1} style={{ color: 'var(--navy)' }} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div className="pay-seat-badge">Pay as you go</div>
+                        <div className="pay-seat-title">Pay for extra seats above your limit</div>
+                        <div className="pay-seat-desc">
+                          Keep your current plan and pay a one-time fee for the additional student uploads. Suitable for occasional or seasonal uploads without changing your plan.
+                        </div>
+                        <div className="pay-seat-price">
+                          <strong>$0.50 per additional student</strong>
+                          <span> · {overLimit} student{overLimit !== 1 ? 's' : ''} over limit = ${(overLimit * 0.50).toFixed(2)} total.</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="modal-footer">
+            {!seatOnlyModal && <span className="step-counter">Step {step} of {totalSteps}</span>}
+            <div className="modal-footer-right">
+              {step > 1 && !seatOnlyModal && <button className="btn btn-secondary" type="button" onClick={handleBack}>Back</button>}
+              <button className="btn btn-primary" type="button" onClick={handleNext} disabled={nextDisabled} style={nextDisabled ? { backgroundColor: '#e4e4e4', color: '#a7a7a7', border: '1px solid #e4e4e4', cursor: 'not-allowed', opacity: 1 } : undefined}>
+                {currentStepKey ? ctaLabel[currentStepKey] : 'Continue'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Toast */}
+      {toast && (
+        <div className="toast">
+          <MSO icon="check_circle" size={18} fill={1} style={{ color: 'var(--brand-primary)' }} />
+          {toast}
+        </div>
+      )}
+
+      {/* ══════════ DRAWER TOGGLE ══════════ */}
+      <button
+        className="drawer-toggle"
+        aria-label={drawerOpen ? 'Close customizer' : 'Open customizer'}
+        onClick={() => setDrawerOpen(o => !o)}
+      >
+        <div className="drawer-toggle-pill">
+          <MSO
+            icon={drawerOpen ? 'chevron_right' : 'chevron_left'}
+            size={18}
+            style={{ color: 'var(--obsidian)' }}
+          />
+        </div>
+      </button>
+
+      {/* ══════════ DRAWER ══════════ */}
+      <div className={`drawer${drawerOpen ? ' open' : ''}`} aria-label="Modal customizer">
+        <div className="drawer-header">
+          <span className="drawer-title">Customize flow</span>
+          <button className="drawer-close" onClick={() => setDrawerOpen(false)} aria-label="Close drawer">
+            <MSO icon="close" size={16} />
+          </button>
+        </div>
+        <div className="drawer-body">
+          <div className="drawer-section-label">Simulate states</div>
+          <div className="drawer-toggle-row">
+            <span className="drawer-toggle-label">Approaching seat limit</span>
+            <label className="toggle-switch">
+              <input type="checkbox" checked={nearLimit} onChange={e => setNearLimit(e.target.checked)} />
+              <div className="toggle-track" />
+              <div className="toggle-thumb" />
+            </label>
+          </div>
+
+          <div className="drawer-section-label" style={{ marginTop: '20px' }}>Steps to show</div>
+
+          {([
+            { key: 'terms',    label: 'Terms & Conditions'  },
+            { key: 'payments', label: 'Teachable Payments'  },
+            { key: 'seats',    label: 'Seat Options'         },
+          ]).map(({ key, label }) => (
+            <div
+              key={key}
+              className={`drawer-check-row${enabledSteps[key] ? ' checked' : ''}`}
+              onClick={() => toggleDrawerStep(key)}
+            >
+              <input
+                type="checkbox"
+                checked={enabledSteps[key]}
+                onChange={() => toggleDrawerStep(key)}
+                onClick={e => e.stopPropagation()}
+              />
+              <span className="drawer-check-label">{label}</span>
+              {enabledSteps[key] && <MSO icon="check_circle" size={16} fill={1} style={{ color: 'var(--success-primary)', flexShrink: 0 }} />}
+            </div>
+          ))}
+
+          {drawerError && (
+            <div className="drawer-error">
+              <MSO icon="warning" size={15} fill={1} style={{ color: '#c0392b', flexShrink: 0 }} />
+              At least one step must remain selected.
+            </div>
+          )}
+
+          {/* Live preview of resulting steps */}
+          <div className="drawer-step-preview">
+            <div className="drawer-preview-label">Resulting flow — {totalSteps} step{totalSteps !== 1 ? 's' : ''}</div>
+            <div className="drawer-preview-steps">
+              {activeSteps.map((s, idx) => (
+                <div key={s.key} className="drawer-preview-step">
+                  <div className="drawer-preview-num">{idx + 1}</div>
+                  {s.label}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+
+// Mount the app
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(App));
+
+  </script>
+</body>
+</html>
