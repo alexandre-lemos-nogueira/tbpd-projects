@@ -200,6 +200,7 @@
     .bf-counter__amount { font-size: var(--font-size-12); line-height: 1.25; color: var(--color-white); }
     .bf-counter__amount b { font-weight: 700; }
     .bf-counter__amount .muted { color: var(--bf-grey-30); font-weight: 400; }
+    .bf-counter__note { font-size: var(--font-size-12); line-height: 1.25; color: var(--bf-grey-30); }
     .bf-counter__link { font-size: var(--font-size-12); line-height: 1.25; color: var(--bf-container); text-decoration: underline; cursor: pointer; background: none; border: none; font-family: inherit; padding: 0; text-align: left; }
     .bf-counter__link:hover { color: var(--bf-neon); }
 
@@ -257,6 +258,9 @@
     .bf-sk-line { height: 10px; }
     .bf-sk-counter { width: 234px; height: 100px; margin: 0 auto; }
     .bf-sk-card { width: 163px; height: 92px; }
+    .bf-sk-icon { width: 13.333px; height: 13.333px; flex-shrink: 0; display: inline-block; }
+    .bf-sk-icon--updates { width: 14px; height: 14px; }
+    .bf-sk-title { width: 110px; height: 10px; }
 
     /* State switcher (prototype-only control) */
     .state-switcher {
@@ -507,7 +511,7 @@
 
     // counter block with progress bar + floating marker
     function counter(opts) {
-      const { current, status, statusClass = '', link = true, border = 'neon' } = opts;
+      const { current, status, statusClass = '', link = true, border = 'neon', note = '' } = opts;
       const pct = Math.round((current / CAMPAIGN.goal) * 100);
       const fillPct = Math.max(0, Math.min(pct, 120)) / 120 * 100; // bar scaled to 120%
       // marker is flipped horizontally, so the tail is now at its bottom-left corner;
@@ -532,6 +536,7 @@
           <div class="bf-counter__body">
             <p class="bf-counter__status ${statusClass}">${status}</p>
             <p class="bf-counter__amount">${amountLine}</p>
+            ${note ? `<p class="bf-counter__note">${note}</p>` : ''}
             ${link ? `<button class="bf-counter__link" onclick="return false;">Check your sales</button>` : ''}
           </div>
         </div>
@@ -550,7 +555,7 @@
           : `<div class="bf-ms__pct bf-ms__pct--locked">${m.pct}%</div>`;
         const stateBadge = reached
           ? `<div class="bf-ms__state bf-ms__state--reached">unlocked!</div>`
-          : `<div class="bf-ms__state bf-ms__state--locked">on track</div>`;
+          : `<div class="bf-ms__state bf-ms__state--locked">not achieved</div>`;
         return `<div class="bf-ms">
           <div class="bf-ms__head">
             ${icon}
@@ -581,12 +586,12 @@
     }
 
     // header variant for message-only states (rules link + logo, no days / no counter)
-    function headerLogoOnly() {
+    function headerLogoOnly(showRules = true) {
       return `<div class="bf-title-progress">
         <div class="bf-header">
           <div class="bf-header__top">
             <div class="bf-days"></div>
-            <button class="bf-rules" onclick="return false;">Campaign rules</button>
+            ${showRules ? `<button class="bf-rules" onclick="return false;">Campaign rules</button>` : ''}
           </div>
           <div class="bf-logo">${LOGO}</div>
         </div>
@@ -602,7 +607,7 @@
           <div class="bf-title-progress">
             <div class="bf-header">
               <div class="bf-header__top">
-                <div class="bf-days">${ICON_CLOCK}<span class="bf-sk bf-sk-line" style="display:inline-block;width:70px"></span></div>
+                <div class="bf-days"><span class="bf-sk bf-sk-icon"></span><span class="bf-sk bf-sk-line" style="display:inline-block;width:70px"></span></div>
                 <span class="bf-sk bf-sk-line" style="display:inline-block;width:80px"></span>
               </div>
               <div class="bf-sk bf-sk-logo"></div>
@@ -610,13 +615,13 @@
             <div class="bf-card-infos"><div class="bf-sk bf-sk-counter"></div></div>
           </div>
           <div class="bf-prizes">
-            <div class="bf-prizes__title"><p>MILESTONE PRIZES</p></div>
+            <div class="bf-prizes__title"><span class="bf-sk bf-sk-title" style="display:inline-block"></span></div>
             <div class="bf-prizes__row" style="padding:0 16px;gap:12px">
               <div class="bf-sk bf-sk-card"></div>
               <div class="bf-sk bf-sk-card"></div>
             </div>
           </div>
-          <div class="bf-updates">${ICON_REFRESH}<span class="bf-sk bf-sk-line" style="display:inline-block;width:160px"></span></div>
+          <div class="bf-updates"><span class="bf-sk bf-sk-icon bf-sk-icon--updates"></span><span class="bf-sk bf-sk-line" style="display:inline-block;width:160px"></span></div>
           <span class="hidden" aria-live="polite">Loading your Black Friday challenge…</span>
         `;
       },
@@ -653,42 +658,43 @@
       goal() {
         const current = 714000; // ~102%
         const h = header('9 days left');
-        const c = counter({ current, status: 'Goal achieved! 🏆' });
+        const c = counter({ current, status: 'Challenge complete!',
+          note: 'All sales will be under validation now. Later on we will contact you for your eligible prizes.' });
         return assemble(h, c, prizes(Math.round(current / CAMPAIGN.goal * 100)) + updates('Last updated today at 9:00 AM'));
       },
 
       'over-achieved'() {
         const current = 770000; // ~110%
         const h = header('Campaign ended');
-        const c = counter({ current, status: 'Challenge complete — goal cleared' });
+        const c = counter({ current, status: 'Challenge complete!',
+          note: 'All sales will be under validation now. Later on we will contact you for your eligible prizes.' });
         return assemble(h, c, prizes(Math.round(current / CAMPAIGN.goal * 100)) + updates('Final • Nov 30 at 11:59 PM'));
       },
 
       'over-missed'() {
         const current = 231000; // ~33%
         const h = header('Campaign ended');
-        const c = counter({ current, status: 'That\'s a wrap — thanks for taking part', statusClass: 'bf-counter__status--grey' });
+        const c = counter({ current, status: 'Campaign over! Better luck next time', statusClass: 'bf-counter__status--grey' });
         return assemble(h, c, prizes(Math.round(current / CAMPAIGN.goal * 100)) + updates('Final • Nov 30 at 11:59 PM'));
       },
 
       adjustment() {
         const current = 539000; // ~77%
         const h = header('14 days left');
-        const c = counter({ current, status: 'Total updated after validation', statusClass: 'bf-counter__status--white' });
+        const c = counter({ current, status: 'Total updated after validation', statusClass: 'bf-counter__status--white',
+          note: 'The update was due to chargebacks, purchase cancelations or exchange (all amounts here are in USD).' });
         return assemble(h, c, prizes(Math.round(current / CAMPAIGN.goal * 100)) + updates('Last updated today at 2:30 PM'));
       },
 
       'not-eligible'() {
         return `
-          ${headerLogoOnly()}
+          ${headerLogoOnly(false)}
           <div class="bf-message">
             <p class="bf-message__title bf-message__title--grey">You're not currently eligible</p>
-            <p class="bf-message__body">Your account isn't eligible for the Black Friday Challenge right now. Eligibility needs an active account in good standing selling through Teachable Payments.</p>
             <div class="bf-message__actions">
               <button class="bf-counter__link" onclick="return false;">Review campaign rules</button>
             </div>
           </div>
-          ${updates('Participation unavailable')}
         `;
       },
 
@@ -699,7 +705,6 @@
             <p class="bf-message__title bf-message__title--grey">Challenge info is unavailable</p>
             <p class="bf-message__body">We couldn't load your challenge right now. Your progress is safe — please check again in a few minutes.</p>
             <div class="bf-message__actions">
-              <button class="bf-counter__link" onclick="render(document.getElementById('stateSelect').value);return false;">Try again</button>
               <button class="bf-counter__link" onclick="return false;">Campaign rules</button>
             </div>
           </div>
