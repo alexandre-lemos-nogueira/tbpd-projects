@@ -658,8 +658,7 @@
       goal() {
         const current = 714000; // ~102%
         const h = header('9 days left');
-        const c = counter({ current, status: 'Challenge complete!',
-          note: 'All sales will be under validation now. Later on we will contact you for your eligible prizes.' });
+        const c = counter({ current, status: 'Goal achieved!' });
         return assemble(h, c, prizes(Math.round(current / CAMPAIGN.goal * 100)) + updates('Last updated today at 9:00 AM'));
       },
 
